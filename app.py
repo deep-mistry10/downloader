@@ -1,12 +1,10 @@
 """
-==============================================================
- TERMINAL VIDEO DOWNLOADER WEB (CLEAN VERSION)
-==============================================================
-No 'downloads' folder will be created.
-Each download happens in a temp folder, then deleted automatically.
+TERMINAL VIDEO DOWNLOADER WEB (DEBUG-FRIENDLY)
+- Uses temp folders (no persistent 'downloads' folder)
+- Checks cookies.txt and returns clear error messages when download fails
 """
 
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, jsonify
 import yt_dlp
 import os
 import re
@@ -14,6 +12,7 @@ import tempfile
 import zipfile
 import shutil
 import platform
+import traceback
 
 app = Flask(__name__)
 
@@ -23,24 +22,26 @@ if platform.system() == "Windows":
 else:
     FFMPEG_PATH = "/usr/bin/ffmpeg"  # for Render or Linux
 
-def sanitize_filename(name):
-    """Remove illegal filename characters."""
-    return re.sub(r'[\\/*?:"<>|]', "", name)
+COOKIES_FILE = "cookies.txt"  # must be placed in same folder as app.py if required
 
-def download_media(url, download_choice, temp_dir):
-    """Download a single media file into the temp folder."""
+def download_media(url, download_choice, temp_dir, use_cookies=True):
+    """Download a single media file into the temp folder.
+       Returns (filepath, None) on success or (None, error_message) on failure.
+    """
     output_template = os.path.join(temp_dir, "%(title)s.%(ext)s")
 
-    # Common yt-dlp options
     common_opts = {
         'outtmpl': output_template,
         'ffmpeg_location': FFMPEG_PATH,
         'quiet': True,
         'noprogress': True,
-        'cookies': 'cookies.txt',
         'nooverwrites': True,
         'restrictfilenames': True,
     }
+
+    # Add cookies only if file exists and use_cookies True
+    if use_cookies and os.path.exists(COOKIES_FILE):
+        common_opts['cookies'] = COOKIES_FILE
 
     if download_choice == "audio":
         ydl_opts = {
@@ -59,13 +60,18 @@ def download_media(url, download_choice, temp_dir):
             'merge_output_format': 'mp4',
         }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
-        if download_choice == "audio":
-            filename = os.path.splitext(filename)[0] + ".mp3"
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            if download_choice == "audio":
+                filename = os.path.splitext(filename)[0] + ".mp3"
+        return filename, None
 
-    return filename
+    except Exception as e:
+        # Return traceback string for debugging (you can shorten this)
+        tb = traceback.format_exc()
+        return None, f"yt-dlp error for {url}: {str(e)}\n{tb}"
 
 
 @app.route("/")
@@ -80,19 +86,36 @@ def download():
     urls = [u.strip() for u in re.split(r'[\n,]+', urls_input) if u.strip()]
 
     if not urls:
-        return "❌ No URLs provided!"
+        return "❌ No URLs provided!", 400
 
-    # Create a temporary directory (deleted after download)
+    # If cookies.txt is missing, inform user (but still attempt without cookies)
+    cookies_present = os.path.exists(COOKIES_FILE)
+    if not cookies_present:
+        # warn user but allow trying without cookies for public videos
+        warning = ("⚠️ cookies.txt not found. "
+                   "YouTube may block downloads with HTTP 429 or 'Sign in' errors. "
+                   "Place a valid cookies.txt next to app.py and redeploy.")
+    else:
+        warning = None
+
     temp_dir = tempfile.mkdtemp()
     downloaded_files = []
+    errors = []
 
     for url in urls:
-        try:
-            print(f"Downloading: {url}")
-            file_path = download_media(url, download_choice, temp_dir)
+        file_path, err = download_media(url, download_choice, temp_dir, use_cookies=cookies_present)
+        if file_path:
             downloaded_files.append(file_path)
-        except Exception as e:
-            print(f"[ERROR] Failed to download {url}: {e}")
+        else:
+            errors.append(err)
+
+    # If there were errors and no files downloaded, return error details
+    if len(downloaded_files) == 0:
+        # cleanup
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return (f"❌ All downloads failed.\n"
+                f"{warning + '\\n' if warning else ''}"
+                f"Errors:\n" + "\n\n".join(errors)), 500
 
     # Single file → send directly
     if len(downloaded_files) == 1:
