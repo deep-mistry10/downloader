@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"
+    <title>Video Downloader Web</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+</head>
+<body>
+    <header>
+        <h1>Video Downloader</h1>
+        <h3>Download any videos & audios instantly</h3>
+    </header>
+
+    <form action="/download" method="post">
+        <label>Video URLs (comma or newline separated):</label><br><br>
+        <textarea name="urls" rows="5" placeholder="Paste your URLs here..."></textarea>
+
+        <div class="options">
+            <label>
+                <input type="radio" name="type" value="audio" checked> Audio (MP3)
+            </label>
+            <label>
+                <input type="radio" name="type" value="video"> Video (MP4)
+            </label>
+        </div>
+
+        <input type="submit" value="Download">
+    </form>
+
+    <footer>
+        &copy; 2025 Deep Mistry. All Rights Reserved. | Made with ❤️ by Deep Mistry.😐
+    </footer>
+</body>
+</html>
