@@ -1,25 +1,33 @@
 """
 ==============================================================
  TERMINAL VIDEO DOWNLOADER WEB
- Copyright (c) 2025 Deep Mistry. All Rights Reserved.
+ Copyright (c) 2025 Deep Mistry
  Author: Deep Mistry
  License: All Rights Reserved
- Version: 1.0.0
+ Version: 2.0.0
  Description:
- A web-based YouTube & media downloader using yt-dlp and FFmpeg.
+ A stable, web-based YouTube & media downloader using yt-dlp + FFmpeg.
+ Optimized for both local (Windows) and Render hosting.
 ==============================================================
 """
 
 from flask import Flask, render_template, request, send_file
 import yt_dlp
 import os
-from pathlib import Path
 import re
 import tempfile
 import zipfile
+import shutil
+from pathlib import Path
+import platform
 
 app = Flask(__name__)
-FFMPEG_PATH = r"C:\Users\tempu\Desktop\TERMINAL VIDEO DOWNLOADER\ffmpeg\bin\ffmpeg.exe"
+
+# ✅ Auto-detect FFmpeg path (works on both PC and Render)
+if platform.system() == "Windows":
+    FFMPEG_PATH = r"C:\Users\tempu\Desktop\TERMINAL VIDEO DOWNLOADER\ffmpeg\bin\ffmpeg.exe"
+else:
+    FFMPEG_PATH = "/usr/bin/ffmpeg"  # default on Render/Linux
 
 def sanitize_filename(name):
     """Remove illegal characters from file names."""
@@ -27,8 +35,9 @@ def sanitize_filename(name):
 
 def download_media(url, download_choice, temp_dir):
     """Download a single media file and return its final path."""
+    output_template = os.path.join(temp_dir, "%(title)s.%(ext)s")
+
     if download_choice == "audio":
-        output_template = os.path.join(temp_dir, "%(title)s.%(ext)s")
         ydl_opts = {
             'format': 'bestaudio/best',
             'outtmpl': output_template,
@@ -37,24 +46,28 @@ def download_media(url, download_choice, temp_dir):
                 'preferredcodec': 'mp3',
                 'preferredquality': '320',
             }],
-            'ffmpeg_location': FFMPEG_PATH
+            'ffmpeg_location': FFMPEG_PATH,
+            'quiet': True,
+            'noprogress': True
         }
     else:
-        output_template = os.path.join(temp_dir, "%(title)s.%(ext)s")
         ydl_opts = {
             'format': 'bestvideo+bestaudio/best',
             'outtmpl': output_template,
             'merge_output_format': 'mp4',
-            'ffmpeg_location': FFMPEG_PATH
+            'ffmpeg_location': FFMPEG_PATH,
+            'quiet': True,
+            'noprogress': True
         }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
-        # Fix: set the correct final file path
+        # Determine correct filename
         if download_choice == "audio":
             filename = os.path.splitext(ydl.prepare_filename(info))[0] + ".mp3"
         else:
             filename = ydl.prepare_filename(info)
+
     return filename
 
 @app.route("/")
@@ -68,31 +81,37 @@ def download():
     urls = [u.strip() for u in re.split(r'[\n,]+', urls_input) if u.strip()]
 
     if not urls:
-        return "No URLs provided!"
+        return "❌ No URLs provided!"
 
     temp_dir = tempfile.mkdtemp()
     downloaded_files = []
 
-    # Download all URLs
     for url in urls:
         try:
             file_path = download_media(url, download_choice, temp_dir)
             downloaded_files.append(file_path)
         except Exception as e:
-            print(f"Failed {url}: {e}")
+            print(f"[ERROR] Failed to download {url}: {e}")
 
-    # If only one file, send directly
+    # ✅ Send single file directly
     if len(downloaded_files) == 1:
         file_path = downloaded_files[0]
         filename = os.path.basename(file_path)
-        return send_file(file_path, as_attachment=True, download_name=filename)
+        response = send_file(file_path, as_attachment=True, download_name=filename)
+        # cleanup
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        return response
 
-    # If multiple files, zip them
+    # ✅ Zip multiple files
     zip_path = os.path.join(temp_dir, "downloads.zip")
-    with zipfile.ZipFile(zip_path, 'w') as zipf:
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for file in downloaded_files:
             zipf.write(file, os.path.basename(file))
-    return send_file(zip_path, as_attachment=True, download_name="downloads.zip")
+
+    response = send_file(zip_path, as_attachment=True, download_name="downloads.zip")
+    # cleanup
+    shutil.rmtree(temp_dir, ignore_errors=True)
+    return response
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
