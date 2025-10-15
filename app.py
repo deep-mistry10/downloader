@@ -25,7 +25,7 @@ app = Flask(__name__)
 
 # ✅ Auto-detect FFmpeg path (works on both PC and Render)
 if platform.system() == "Windows":
-    FFMPEG_PATH = r"C:\Users\tempu\Desktop\TERMINAL VIDEO DOWNLOADER\ffmpeg\bin\ffmpeg.exe"
+    FFMPEG_PATH = r"/usr/bin/ffmpeg"
 else:
     FFMPEG_PATH = "/usr/bin/ffmpeg"  # default on Render/Linux
 
@@ -115,3 +115,4 @@ def download():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
+
