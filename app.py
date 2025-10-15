@@ -49,6 +49,7 @@ def download_media(url, download_choice, temp_dir):
             'ffmpeg_location': FFMPEG_PATH,
             'quiet': True,
             'noprogress': True
+            'cookies': 'cookies.txt'
         }
     else:
         ydl_opts = {
@@ -58,6 +59,7 @@ def download_media(url, download_choice, temp_dir):
             'ffmpeg_location': FFMPEG_PATH,
             'quiet': True,
             'noprogress': True
+            'cookies': 'cookies.txt'
         }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -115,4 +117,5 @@ def download():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
+
 
